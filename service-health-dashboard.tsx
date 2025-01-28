@@ -7,6 +7,31 @@ import Image from "next/image"
 
 type ProviderType = "AWS" | "DCC" | "Azure"
 
+// Define a type for the service
+type Service = {
+  service_name: string;
+  status: string;
+  version: string;
+  replicas: number;
+};
+
+// Define a type for the hub
+type Hub = {
+  services: Service[];
+};
+
+// Define a type for the data
+type HealthData = {
+  hubs: Record<string, Hub>;
+  status: any[]; // Adjust this type based on your actual data structure
+};
+
+// Update the ServiceHealth type to match HealthData
+type ServiceHealth = {
+  hubs: Record<string, Hub>;
+  status: any[]; // Adjust this type based on your actual data structure
+};
+
 export default function ServiceHealthDashboard() {
   const [healthData, setHealthData] = useState<ServiceHealth | null>(null)
   const [loading, setLoading] = useState(true)
@@ -24,16 +49,16 @@ export default function ServiceHealthDashboard() {
   const fetchHealthData = async () => {
     try {
       const response = await fetch("https://health.vue.ai/services-health")
-      const data = await response.json()
+      const data: HealthData = await response.json()
       setHealthData(data)
       setLoading(false)
       setLastRefreshTime(new Date())
       
       // Reset all service refresh states with the new refresh time
       const newServiceStates: Record<string, { loading: boolean; lastRefresh: Date }> = {}
-      Object.values(data.hubs).forEach((hub) => {
-        hub.services.forEach((service) => {
-          newServiceStates[service] = { loading: false, lastRefresh: new Date() }
+      Object.values(data.hubs).forEach((hub: Hub) => {
+        hub.services.forEach((service: Service) => {
+          newServiceStates[service.service_name] = { loading: false, lastRefresh: new Date() }
         })
       })
       setServiceRefreshStates(newServiceStates)
@@ -143,6 +168,12 @@ export default function ServiceHealthDashboard() {
       return newSet
     })
   }
+
+  // Utility function to format service names
+  const formatServiceName = (name: string) => {
+    if (name === "workflow") return "Workflow Manager";
+    return name.replace(/_/g, " ");
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -259,7 +290,7 @@ export default function ServiceHealthDashboard() {
                           ) : (
                             <ChevronDown className="h-4 w-4 mr-2" />
                           )}
-                          {serviceName}
+                          {formatServiceName(serviceName)}
                         </td>
                         {filteredRegions.map((region) => {
                           const service = region.services.find((s) => s.service_name === serviceName)
