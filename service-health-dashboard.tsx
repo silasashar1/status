@@ -5,7 +5,7 @@ import { CheckCircle2, XCircle, AlertCircle, ChevronDown, ChevronUp, RefreshCw }
 import type { ServiceHealth } from "./types"
 import Image from "next/image"
 
-type ProviderType = "AWS" | "DCC" | "Azure"
+type ProviderType = "AWS" | "DCC"
 
 // Define a type for the service
 type Service = {
@@ -50,6 +50,7 @@ export default function ServiceHealthDashboard() {
     try {
       const response = await fetch("https://health.vue.ai/services-health")
       const data: HealthData = await response.json()
+      console.log("Fetched Data:", data)
       setHealthData(data)
       setLoading(false)
       setLastRefreshTime(new Date())
@@ -138,7 +139,6 @@ export default function ServiceHealthDashboard() {
     if (selectedProvider === "AWS")
       return region.csp.toLowerCase() === "aws" && region.cluster_name !== "DCC-Production"
     if (selectedProvider === "DCC") return region.cluster_name === "DCC-Production"
-    if (selectedProvider === "Azure") return region.csp.toLowerCase() === "azure"
     return false
   })
 
@@ -159,20 +159,47 @@ export default function ServiceHealthDashboard() {
 
   const toggleServiceExpansion = (serviceName: string) => {
     setExpandedServices((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(serviceName)) {
-        newSet.delete(serviceName)
-      } else {
-        newSet.add(serviceName)
+      const newSet = new Set<string>();
+      // If clicking the currently expanded service, close it
+      // Otherwise, set the new service as the only expanded one
+      if (!prev.has(serviceName)) {
+        newSet.add(serviceName);
       }
-      return newSet
-    })
-  }
+      return newSet;
+    });
+  };
 
   // Utility function to format service names
   const formatServiceName = (name: string) => {
     if (name === "workflow") return "Workflow Manager";
-    return name.replace(/_/g, " ");
+    const formattedName = name.replace(/_/g, " ");
+    return formattedName.replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  // Update the getDisruptedServices function to check filtered regions
+  const getDisruptedServices = () => {
+    const disruptions = [];
+    if (healthData) {
+      filteredRegions.forEach((region) => {
+        region.services.forEach((service) => {
+          if (service.status === "unhealthy") {
+            disruptions.push({
+              name: formatServiceName(service.service_name),
+              region: region.region,
+            });
+          }
+        });
+      });
+    }
+    console.log("Disruptions:", disruptions); // Debugging: Log the disruptions
+    return disruptions;
+  };
+
+  // Optional: Add this function to check if any services are unhealthy
+  const hasDisruptions = () => {
+    return filteredRegions.some((region) =>
+      region.services.some((service) => service.status === "unhealthy")
+    );
   };
 
   return (
@@ -213,7 +240,7 @@ export default function ServiceHealthDashboard() {
                 className="text-blue-500 hover:text-blue-700 underline flex items-center space-x-1 inline-flex"
               >
                 <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
-                <span>Refresh All Providers</span>
+                <span>Refresh All</span>
               </button>
             </div>
           </div>
@@ -222,7 +249,7 @@ export default function ServiceHealthDashboard() {
         {/* Cloud Provider Tabs */}
         <div className="mb-6 border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
-            {["AWS", "DCC", "Azure"].map((provider) => (
+            {["AWS", "DCC"].map((provider) => (
               <button
                 key={provider}
                 onClick={() => setSelectedProvider(provider as ProviderType)}
@@ -317,7 +344,9 @@ export default function ServiceHealthDashboard() {
                                     {service ? (
                                       <div className="flex items-center space-x-4">
                                         <span>v{service.version}</span>
+                                        <span className="text-gray-300">|</span>
                                         <span>Replicas: {service.replicas}</span>
+                                        <span className="text-gray-300">|</span>
                                         <div className="flex items-center space-x-2">
                                           {serviceRefreshStates[serviceName]?.lastRefresh && (
                                             <span className="text-gray-500">
@@ -353,6 +382,24 @@ export default function ServiceHealthDashboard() {
             )}
           </div>
         </div>
+
+        {/* Service Disruption Detected Section */}
+        {hasDisruptions() && (
+          <div className="mt-8 p-4 border rounded-lg bg-white shadow-sm">
+            <h2 className="text-lg font-semibold text-red-600 flex items-center">
+              <AlertCircle className="h-5 w-5 mr-2" />
+              Service Disruption Detected
+            </h2>
+            <ul className="mt-4 space-y-2">
+              {getDisruptedServices().map((disruption, index) => (
+                <li key={index} className="flex items-center text-sm text-red-500">
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  {disruption.name} is disrupted in {disruption.region}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   )
